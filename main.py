@@ -4,6 +4,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import pytz
+from pyairtable import Api
+
+# Airtable Configuration
+AIRTABLE_TOKEN = st.secrets["AIRTABLE_TOKEN"]
+BASE_ID = st.secrets["AIRTABLE_BASE_ID"]
+TABLE_ID = st.secrets["AIRTABLE_TABLE_ID"]
 
 # Set page configuration
 st.set_page_config(
@@ -12,47 +18,116 @@ st.set_page_config(
     layout="wide"
 )
 
-# Title
-st.title("🥗 Nutrition Dashboard")
-
 # Load and preprocess data
-@st.cache_data
-def load_data():
-    df = pd.read_csv("Table 1-Grid view.csv")
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_airtable_data():
+    """Read nutrition data from Airtable and return as DataFrame"""
+    try:
+        # Initialize Airtable client
+        api = Api(AIRTABLE_TOKEN)
+        table = api.table(BASE_ID, TABLE_ID)
+        
+        # Fetch all records
+        records = table.all()
+        if not records:
+            print("No records found in Airtable")
+            return pd.DataFrame()
+            
+        # Convert to DataFrame
+        df = pd.DataFrame([record['fields'] for record in records])
+        
+        # Add record IDs
+        df['ID'] = [record['id'] for record in records]
+        df = df.set_index('ID')
+        
+        # Drop any photo/attachment columns
+        photo_cols = [col for col in df.columns if any(x in col.lower() for x in ['photo', 'attachment', 'image'])]
+        df = df.drop(columns=photo_cols, errors='ignore')
+        
+        # Convert dates from ISO format
+        df['Input Date'] = pd.to_datetime(df['Input Date'], format='ISO8601')
+        # Convert to dd/mm/yyyy format for display
+        df['Input Date String'] = df['Input Date'].dt.strftime('%d/%m/%Y %I:%M%p')
+        df['Date'] = df['Input Date'].dt.date
+        
+        return df
+        
+    except Exception as e:
+        print(f"Error accessing Airtable: {str(e)}")
+        return None
+
+def calculate_caloric_proportions(metrics_df):
+    # Calculate calories from each macronutrient
+    protein_cals = metrics_df['Protein (g)'] * 4  # 4 calories per gram of protein
+    carbs_cals = metrics_df['Carbohydrates (g)'] * 4  # 4 calories per gram of carbs
+    fat_cals = metrics_df['Fat (g)'] * 9  # 9 calories per gram of fat
     
-    # Drop photo columns
-    photo_columns = [col for col in df.columns if 'Photo' in col]
-    df = df.drop(columns=photo_columns)
+    total_cals = metrics_df['Calories (kcal)']
     
-    # Convert date column
-    df['Input Date'] = pd.to_datetime(df['Input Date'], format='%d/%m/%Y %I:%M%p')
-    df['Date'] = df['Input Date'].dt.date
+    # Calculate percentages
+    return {
+        'Protein': protein_cals / total_cals * 100,
+        'Carbohydrates': carbs_cals / total_cals * 100,
+        'Fat': fat_cals / total_cals * 100
+    }
+
+def create_macro_donut(proportions, title):
+    fig = go.Figure(data=[go.Pie(
+        labels=['Protein', 'Carbohydrates', 'Fat'],
+        values=[proportions['Protein'], proportions['Carbohydrates'], proportions['Fat']],
+        hole=.4,
+        marker_colors=['#B4D6FA', '#C1F0C1', '#FFE5B4']  # Using same colors as the trend charts
+    )])
     
-    return df
+    fig.update_layout(
+        title=title,
+        showlegend=True,
+        height=300,
+        margin=dict(t=40, b=0, l=0, r=0)
+    )
+    
+    return fig
 
 # Load data
-df = load_data()
+df = get_airtable_data()
+
+if df is None:
+    st.error("Could not load data. Please check your Airtable configuration.")
+    st.stop()
+
+# Ensure we have data before proceeding
+if len(df) == 0:
+    st.warning("No data available in the selected source.")
+    st.stop()
 
 # Sidebar filters
 st.sidebar.header("Filters")
+
+# Get current date in Singapore timezone (used throughout the app)
+sg_tz = pytz.timezone('Asia/Singapore')
+sg_now = datetime.now(sg_tz)
+today_date = sg_now.date()
+
+# Get the actual start date from the data (first date with actual entries)
+actual_start_date = df['Date'].min()
+actual_end_date = min(df['Date'].max(), today_date)  # Use the earlier of today or last recorded date
+
 date_range = st.sidebar.date_input(
     "Select Date Range",
-    value=(df['Date'].min(), df['Date'].max()),
-    min_value=df['Date'].min(),
-    max_value=df['Date'].max()
+    value=(actual_start_date, actual_end_date),
+    min_value=actual_start_date,
+    max_value=actual_end_date
 )
+
+# Show the date range info
+st.sidebar.info(f"Data available from {actual_start_date.strftime('%Y-%m-%d')} to {actual_end_date.strftime('%Y-%m-%d')}")
 
 # Filter data based on date range
 mask = (df['Date'] >= date_range[0]) & (df['Date'] <= date_range[1])
 filtered_df = df[mask]
 
 # Daily Summary Metrics
-st.header("Daily Nutritional Summary")
-
-# Get current date in Singapore timezone
-sg_tz = pytz.timezone('Asia/Singapore')
-sg_now = datetime.now(sg_tz)
-today_date = sg_now.date()
+st.header("📊 Daily Nutritional Summary")
 
 # Calculate today's metrics
 today_metrics = filtered_df[filtered_df['Date'] == today_date].agg({
@@ -98,6 +173,25 @@ with col4:
               f"{fat_value:.1f}g",
               delta=f"{fat_delta:.1f}" if fat_delta is not None else None)
 
+# Caloric Breakdown
+st.subheader("Caloric Breakdown")
+col1, col2 = st.columns(2)
+
+with col1:
+    # Today's caloric breakdown
+    if not today_metrics.isna().any():  # Only show if we have data for today
+        today_proportions = calculate_caloric_proportions(today_metrics)
+        fig_today_donut = create_macro_donut(today_proportions, "Today's Caloric Sources")
+        st.plotly_chart(fig_today_donut, use_container_width=True)
+    else:
+        st.info("No data available for today")
+
+with col2:
+    # Average daily caloric breakdown
+    avg_proportions = calculate_caloric_proportions(daily_metrics)
+    fig_avg_donut = create_macro_donut(avg_proportions, "Average Daily Caloric Sources")
+    st.plotly_chart(fig_avg_donut, use_container_width=True)
+
 st.subheader("Average Daily Intake")
 col1, col2, col3, col4 = st.columns(4)
 with col1:
@@ -110,79 +204,151 @@ with col4:
     st.metric("Avg. Daily Fat", f"{daily_metrics['Fat (g)']:.1f}g")
 
 # Trends over time
-st.header("Nutritional Trends")
-tab1, tab2, tab3, tab4 = st.tabs(["Calories", "Protein", "Carbohydrates", "Fat"])
+st.header("📊 Nutritional Trends")
+tabs = st.tabs(["🔥 Calories", "🥩 Protein", "🍚 Carbohydrates", "🍯 Sugar", "🥑 Fat", "🧈 Saturated Fat", 
+                "🥚 Cholesterol", "🥬 Fiber", "🐟 Omega-3"])
 
 # Process the daily totals for all nutrients
 daily_totals = filtered_df.groupby('Date').agg({
     'Calories (kcal)': 'sum',
     'Protein (g)': 'sum',
     'Carbohydrates (g)': 'sum',
-    'Fat (g)': 'sum'
+    'Sugar (g)': 'sum',
+    'Fat (g)': 'sum',
+    'Saturated Fat (g)': 'sum',
+    'Cholesterol (mg)': 'sum',
+    'Fiber (g)': 'sum',
+    'Omega-3 (mg)': 'sum'
 }).reset_index()
 
-with tab1:
+# Calories tab
+with tabs[0]:
     fig_calories = px.bar(
         daily_totals, 
         x='Date', 
-        y='Calories (kcal)',
-        title='Daily Caloric Intake'
+        y='Calories (kcal)',        title='🔥 Daily Caloric Intake'
     )
-    fig_calories.update_traces(marker_color='#FF9B9B')
-    # Add average line
+    fig_calories.update_traces(marker_color='#FFD1DC')  # Pastel pink
     avg_calories = daily_totals['Calories (kcal)'].mean()
-    fig_calories.add_hline(y=avg_calories, line_dash="dash", line_color="red",
+    fig_calories.add_hline(y=avg_calories, line_dash="dash", line_color="#FF97A9",
                           annotation_text=f"Average: {avg_calories:.0f} kcal", 
                           annotation_position="right")
     st.plotly_chart(fig_calories, use_container_width=True)
 
-with tab2:
+# Protein tab
+with tabs[1]:
     fig_protein = px.bar(
         daily_totals, 
         x='Date', 
-        y='Protein (g)',
-        title='Daily Protein Intake'
+        y='Protein (g)',        title='🥩 Daily Protein Intake'
     )
-    fig_protein.update_traces(marker_color='#A0C4FF')
-    # Add average line
+    fig_protein.update_traces(marker_color='#B4D6FA')  # Pastel blue
     avg_protein = daily_totals['Protein (g)'].mean()
-    fig_protein.add_hline(y=avg_protein, line_dash="dash", line_color="blue",
+    fig_protein.add_hline(y=avg_protein, line_dash="dash", line_color="#7EB1E8",
                          annotation_text=f"Average: {avg_protein:.1f}g", 
                          annotation_position="right")
     st.plotly_chart(fig_protein, use_container_width=True)
 
-with tab3:
+# Carbohydrates tab
+with tabs[2]:
     fig_carbs = px.bar(
         daily_totals, 
         x='Date', 
-        y='Carbohydrates (g)',
-        title='Daily Carbohydrate Intake'
+        y='Carbohydrates (g)',        title='🍚 Daily Carbohydrate Intake'
     )
-    fig_carbs.update_traces(marker_color='#9BF6FF')
-    # Add average line
+    fig_carbs.update_traces(marker_color='#C1F0C1')  # Pastel green
     avg_carbs = daily_totals['Carbohydrates (g)'].mean()
-    fig_carbs.add_hline(y=avg_carbs, line_dash="dash", line_color="cyan",
+    fig_carbs.add_hline(y=avg_carbs, line_dash="dash", line_color="#98D698",
                        annotation_text=f"Average: {avg_carbs:.1f}g", 
                        annotation_position="right")
     st.plotly_chart(fig_carbs, use_container_width=True)
 
-with tab4:
+# Sugar tab
+with tabs[3]:
+    fig_sugar = px.bar(
+        daily_totals, 
+        x='Date', 
+        y='Sugar (g)',        title='🍯 Daily Sugar Intake'
+    )
+    fig_sugar.update_traces(marker_color='#FFB5E8')  # Pastel magenta
+    avg_sugar = daily_totals['Sugar (g)'].mean()
+    fig_sugar.add_hline(y=avg_sugar, line_dash="dash", line_color="#FF8DC7",
+                       annotation_text=f"Average: {avg_sugar:.1f}g", 
+                       annotation_position="right")
+    st.plotly_chart(fig_sugar, use_container_width=True)
+
+# Fat tab
+with tabs[4]:
     fig_fat = px.bar(
         daily_totals, 
         x='Date', 
-        y='Fat (g)',
-        title='Daily Fat Intake'
+        y='Fat (g)',        title='🥑 Daily Fat Intake'
     )
-    fig_fat.update_traces(marker_color='#FFB347')
-    # Add average line
+    fig_fat.update_traces(marker_color='#FFE5B4')  # Pastel peach
     avg_fat = daily_totals['Fat (g)'].mean()
-    fig_fat.add_hline(y=avg_fat, line_dash="dash", line_color="orange",
+    fig_fat.add_hline(y=avg_fat, line_dash="dash", line_color="#FFB366",
                      annotation_text=f"Average: {avg_fat:.1f}g", 
                      annotation_position="right")
     st.plotly_chart(fig_fat, use_container_width=True)
 
+# Saturated Fat tab
+with tabs[5]:
+    fig_sat_fat = px.bar(
+        daily_totals, 
+        x='Date', 
+        y='Saturated Fat (g)',        title='🧈 Daily Saturated Fat Intake'
+    )
+    fig_sat_fat.update_traces(marker_color='#FFDAB9')  # Pastel peach/orange
+    avg_sat_fat = daily_totals['Saturated Fat (g)'].mean()
+    fig_sat_fat.add_hline(y=avg_sat_fat, line_dash="dash", line_color="#FFC087",
+                         annotation_text=f"Average: {avg_sat_fat:.1f}g", 
+                         annotation_position="right")
+    st.plotly_chart(fig_sat_fat, use_container_width=True)
+
+# Cholesterol tab
+with tabs[6]:
+    fig_chol = px.bar(
+        daily_totals, 
+        x='Date', 
+        y='Cholesterol (mg)',        title='🥚 Daily Cholesterol Intake'
+    )
+    fig_chol.update_traces(marker_color='#DCD0FF')  # Pastel purple
+    avg_chol = daily_totals['Cholesterol (mg)'].mean()
+    fig_chol.add_hline(y=avg_chol, line_dash="dash", line_color="#BBA0FF",
+                       annotation_text=f"Average: {avg_chol:.0f}mg", 
+                       annotation_position="right")
+    st.plotly_chart(fig_chol, use_container_width=True)
+
+# Fiber tab
+with tabs[7]:
+    fig_fiber = px.bar(
+        daily_totals, 
+        x='Date', 
+        y='Fiber (g)',        title='🥬 Daily Fiber Intake'
+    )
+    fig_fiber.update_traces(marker_color='#E2F0CB')  # Pastel yellow-green
+    avg_fiber = daily_totals['Fiber (g)'].mean()
+    fig_fiber.add_hline(y=avg_fiber, line_dash="dash", line_color="#C5D86D",
+                       annotation_text=f"Average: {avg_fiber:.1f}g", 
+                       annotation_position="right")
+    st.plotly_chart(fig_fiber, use_container_width=True)
+
+# Omega-3 tab
+with tabs[8]:
+    fig_omega = px.bar(
+        daily_totals, 
+        x='Date', 
+        y='Omega-3 (mg)',        title='🐟 Daily Omega-3 Intake'
+    )
+    fig_omega.update_traces(marker_color='#B5EAD7')  # Pastel mint
+    avg_omega = daily_totals['Omega-3 (mg)'].mean()
+    fig_omega.add_hline(y=avg_omega, line_dash="dash", line_color="#95D5B2",
+                       annotation_text=f"Average: {avg_omega:.0f}mg", 
+                       annotation_position="right")
+    st.plotly_chart(fig_omega, use_container_width=True)
+
 # Detailed nutrient analysis
-st.header("Detailed Nutrient Analysis")
+st.header("🔍 Detailed Nutrient Analysis")
 nutrients = ['Calories (kcal)', 'Protein (g)', 'Carbohydrates (g)', 'Sugar (g)',
             'Fat (g)', 'Saturated Fat (g)', 'Cholesterol (mg)', 'Fiber (g)', 'Omega-3 (mg)']
 
@@ -200,6 +366,6 @@ fig_nutrients.update_layout(yaxis={'categoryorder': 'total ascending'})
 st.plotly_chart(fig_nutrients, use_container_width=True)
 
 # Display raw data
-st.header("Raw Data")
+st.header("📋 Raw Data")
 if st.checkbox("Show raw data"):
     st.dataframe(filtered_df)
