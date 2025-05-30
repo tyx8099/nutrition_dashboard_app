@@ -42,10 +42,13 @@ def get_airtable_data():
         
         # Drop any photo/attachment columns
         photo_cols = [col for col in df.columns if any(x in col.lower() for x in ['photo', 'attachment', 'image'])]
-        df = df.drop(columns=photo_cols, errors='ignore')
-        
-        # Convert dates from ISO format
+        df = df.drop(columns=photo_cols, errors='ignore')          # Convert dates from ISO format and handle timezone
         df['Input Date'] = pd.to_datetime(df['Input Date'], format='ISO8601')
+        # Convert to Singapore timezone, handling both tz-naive and tz-aware times
+        if df['Input Date'].dt.tz is None:
+            df['Input Date'] = df['Input Date'].dt.tz_localize('UTC').dt.tz_convert('Asia/Singapore')
+        else:
+            df['Input Date'] = df['Input Date'].dt.tz_convert('Asia/Singapore')
         # Convert to dd/mm/yyyy format for display
         df['Input Date String'] = df['Input Date'].dt.strftime('%d/%m/%Y %I:%M%p')
         df['Date'] = df['Input Date'].dt.date
@@ -126,10 +129,13 @@ sg_tz = pytz.timezone('Asia/Singapore')
 sg_now = datetime.now(sg_tz)
 today_date = sg_now.date()
 
+# No need to convert timezone again since it's already done during data loading
+
 # Get the actual start date from the data (first date with actual entries)
 actual_start_date = df['Date'].min()
-actual_end_date = min(df['Date'].max(), today_date)  # Use the earlier of today or last recorded date
+actual_end_date = today_date  # Use today's date as the end date
 
+# Update the date range input
 date_range = st.sidebar.date_input(
     "Select Date Range",
     value=(actual_start_date, actual_end_date),
