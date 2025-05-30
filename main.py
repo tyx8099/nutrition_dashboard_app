@@ -107,7 +107,7 @@ def create_macro_donut(proportions, title):
 # Add refresh button in sidebar
 if st.sidebar.button("🔄 Refresh Data"):
     st.cache_data.clear()
-    st.rerun()
+    st.experimental_rerun()
 
 # Load data
 df = get_airtable_data()
