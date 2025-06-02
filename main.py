@@ -59,6 +59,7 @@ def get_airtable_data():
         print(f"Error accessing Airtable: {str(e)}")
         return None
 
+# Function kept for reference - we now use create_nutrient_donut directly with the metrics
 def calculate_caloric_proportions(metrics_df):
     # Calculate calories from each macronutrient
     protein_cals = metrics_df['Protein (g)'] * 4  # 4 calories per gram of protein
@@ -87,19 +88,74 @@ PASTEL_COLORS = {
     'mint': '#7EBDC3'       # Omega-3 - Light Teal (added to complement theme)
 }
 
-def create_macro_donut(proportions, title):
+def create_nutrient_donut(metrics, title):
+    # Define a consistent order for nutrients
+    nutrient_order = [
+        'Protein (g)',
+        'Carbohydrates (g)',
+        'Fat (g)',
+        'Sugar (g)',
+        'Saturated Fat (g)',
+        'Cholesterol (mg)',
+        'Fiber (g)',
+        'Omega-3 (mg)'
+    ]
+    
+    # Map of nutrients to their colors from our palette
+    nutrient_color_map = {
+        'Calories (kcal)': PASTEL_COLORS['pink'],
+        'Protein (g)': PASTEL_COLORS['blue'],
+        'Carbohydrates (g)': PASTEL_COLORS['green'],
+        'Fat (g)': PASTEL_COLORS['peach'],
+        'Sugar (g)': PASTEL_COLORS['magenta'],
+        'Saturated Fat (g)': PASTEL_COLORS['orange'],
+        'Cholesterol (mg)': PASTEL_COLORS['purple'],
+        'Fiber (g)': PASTEL_COLORS['yellow_green'],
+        'Omega-3 (mg)': PASTEL_COLORS['mint']
+    }
+    
+    # Initialize ordered lists for our chart data
+    labels = []
+    values = []
+    colors = []
+    
+    # Process nutrients in the defined order
+    for nutrient in nutrient_order:
+        if nutrient in metrics and not pd.isna(metrics[nutrient]) and metrics[nutrient] > 0:
+            labels.append(nutrient)
+            values.append(float(metrics[nutrient]))
+            colors.append(nutrient_color_map[nutrient])
+      # Add any remaining nutrients that weren't in our predefined order
+    for nutrient, value in metrics.items():
+        if (nutrient not in nutrient_order and 
+            nutrient != 'Calories (kcal)' and 
+            not pd.isna(value) and 
+            value > 0):
+            labels.append(nutrient)
+            values.append(float(value))
+            colors.append(nutrient_color_map.get(nutrient, '#CCCCCC'))  # Default gray if not in the map
+    
     fig = go.Figure(data=[go.Pie(
-        labels=['Protein', 'Carbohydrates', 'Fat'],
-        values=[proportions['Protein'], proportions['Carbohydrates'], proportions['Fat']],
+        labels=labels,
+        values=values,
         hole=.4,
-        marker_colors=[PASTEL_COLORS['blue'], PASTEL_COLORS['green'], PASTEL_COLORS['peach']]
+        marker_colors=colors,
+        sort=False  # Disable automatic sorting to maintain our custom order
     )])
     
     fig.update_layout(
         title=title,
         showlegend=True,
-        height=300,
-        margin=dict(t=40, b=0, l=0, r=0)
+        height=400,  # Increased height to accommodate more segments
+        margin=dict(t=40, b=0, l=0, r=0),
+        # Ensure consistent legend positioning
+        legend=dict(
+            orientation="v",
+            yanchor="middle",
+            y=0.5,
+            xanchor="right",
+            x=1.1
+        )
     )
     
     return fig
@@ -244,23 +300,21 @@ with col6:
 with col7:
     st.metric("Fiber", f"{daily_metrics['Fiber (g)']:.1f}g")
 
-# Caloric Breakdown
-st.subheader("Caloric Breakdown")
+# Nutrient Distribution
+st.subheader("Nutrient Distribution")
 col1, col2 = st.columns(2)
 
 with col1:
-    # Today's caloric breakdown
+    # Today's nutrients breakdown
     if not today_metrics.isna().any():  # Only show if we have data for today
-        today_proportions = calculate_caloric_proportions(today_metrics)
-        fig_today_donut = create_macro_donut(today_proportions, "Today's Caloric Sources")
+        fig_today_donut = create_nutrient_donut(today_metrics, "Today's Nutrient Distribution")
         st.plotly_chart(fig_today_donut, use_container_width=True)
     else:
         st.info("No data available for today")
 
 with col2:
-    # Average daily caloric breakdown
-    avg_proportions = calculate_caloric_proportions(daily_metrics)
-    fig_avg_donut = create_macro_donut(avg_proportions, "Average Daily Caloric Sources")
+    # Average daily nutrients breakdown
+    fig_avg_donut = create_nutrient_donut(daily_metrics, "Average Daily Nutrient Distribution")
     st.plotly_chart(fig_avg_donut, use_container_width=True)
 
 # Trends over time
