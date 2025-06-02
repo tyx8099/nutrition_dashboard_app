@@ -74,17 +74,17 @@ def calculate_caloric_proportions(metrics_df):
         'Fat': fat_cals / total_cals * 100
     }
 
-# Define pastel color palette
+# Define color palette using earthy tones
 PASTEL_COLORS = {
-    'blue': '#B4D6FA',      # Protein
-    'green': '#C1F0C1',     # Carbs
-    'peach': '#FFE5B4',     # Fat
-    'pink': '#FFD1DC',      # Calories
-    'magenta': '#FFB5E8',   # Sugar
-    'orange': '#FFDAB9',    # Saturated Fat
-    'purple': '#E6E6FA',    # Cholesterol
-    'yellow_green': '#E2F0CB', # Fiber
-    'mint': '#B5EAD7'       # Omega-3
+    'blue': '#2A9D8F',      # Protein - Teal
+    'green': '#8AB17D',     # Carbs - Sage Green (added to complement theme)
+    'peach': '#F4A261',     # Fat - Peach
+    'pink': '#E76F51',      # Calories - Coral
+    'magenta': '#E29578',   # Sugar - Light Coral (added to complement theme)
+    'orange': '#EFBC9B',    # Saturated Fat - Light Peach (added to complement theme)
+    'purple': '#264653',    # Cholesterol - Dark Teal
+    'yellow_green': '#E9C46A', # Fiber - Yellow/Gold
+    'mint': '#7EBDC3'       # Omega-3 - Light Teal (added to complement theme)
 }
 
 def create_macro_donut(proportions, title):
@@ -164,7 +164,8 @@ today_metrics = filtered_df[filtered_df['Date'] == today_date].agg({
     'Carbohydrates (g)': 'sum',
     'Fat (g)': 'sum',
     'Saturated Fat (g)': 'sum',
-    'Cholesterol (mg)': 'sum'
+    'Cholesterol (mg)': 'sum',
+    'Fiber (g)': 'sum'
 })
 
 # Calculate average daily metrics
@@ -174,14 +175,15 @@ daily_metrics = filtered_df.groupby('Date').agg({
     'Carbohydrates (g)': 'sum',
     'Fat (g)': 'sum',
     'Saturated Fat (g)': 'sum',
-    'Cholesterol (mg)': 'sum'
+    'Cholesterol (mg)': 'sum',
+    'Fiber (g)': 'sum'
 }).mean()
 
 # Display metrics in two rows
 st.subheader(f"Today's Intake ({sg_now.strftime('%Y-%m-%d')})")
 
 # Display today's metrics in 6 columns
-col1, col2, col3, col4, col5, col6 = st.columns(6)
+col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
 with col1:
     calories_value = float(today_metrics['Calories (kcal)']) if not pd.isna(today_metrics['Calories (kcal)']) else 0
     calories_delta = float(today_metrics['Calories (kcal)'] - daily_metrics['Calories (kcal)']) if not pd.isna(today_metrics['Calories (kcal)']) else None
@@ -218,21 +220,29 @@ with col6:
     st.metric("Cholesterol", 
               f"{chol_value:.0f}mg",
               delta=f"{chol_delta:.0f}" if chol_delta is not None else None)
+with col7:
+    fiber_value = float(today_metrics['Fiber (g)']) if not pd.isna(today_metrics['Fiber (g)']) else 0
+    fiber_delta = float(today_metrics['Fiber (g)'] - daily_metrics['Fiber (g)']) if not pd.isna(today_metrics['Fiber (g)']) else None
+    st.metric("Fiber", 
+              f"{fiber_value:.1f}g",
+              delta=f"{fiber_delta:.1f}" if fiber_delta is not None else None)
 
 st.subheader("Average Daily Intake")
-col1, col2, col3, col4, col5, col6 = st.columns(6)
+col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
 with col1:
-    st.metric("Avg. Daily Calories", f"{daily_metrics['Calories (kcal)']:.0f} kcal")
+    st.metric("Calories", f"{daily_metrics['Calories (kcal)']:.0f} kcal")
 with col2:
-    st.metric("Avg. Daily Protein", f"{daily_metrics['Protein (g)']:.1f}g")
+    st.metric("Protein", f"{daily_metrics['Protein (g)']:.1f}g")
 with col3:
-    st.metric("Avg. Daily Carbs", f"{daily_metrics['Carbohydrates (g)']:.1f}g")
+    st.metric("Carbs", f"{daily_metrics['Carbohydrates (g)']:.1f}g")
 with col4:
-    st.metric("Avg. Daily Fat", f"{daily_metrics['Fat (g)']:.1f}g")
+    st.metric("Fat", f"{daily_metrics['Fat (g)']:.1f}g")
 with col5:
-    st.metric("Avg. Daily Sat. Fat", f"{daily_metrics['Saturated Fat (g)']:.1f}g")
+    st.metric("Sat. Fat", f"{daily_metrics['Saturated Fat (g)']:.1f}g")
 with col6:
-    st.metric("Avg. Daily Cholesterol", f"{daily_metrics['Cholesterol (mg)']:.0f}mg")
+    st.metric("Cholesterol", f"{daily_metrics['Cholesterol (mg)']:.0f}mg")
+with col7:
+    st.metric("Fiber", f"{daily_metrics['Fiber (g)']:.1f}g")
 
 # Caloric Breakdown
 st.subheader("Caloric Breakdown")
@@ -276,11 +286,12 @@ with tabs[0]:
     fig_calories = px.bar(
         daily_totals, 
         x='Date', 
-        y='Calories (kcal)',        title='🔥 Daily Caloric Intake'
+        y='Calories (kcal)',
+        title='🔥 Daily Caloric Intake'
     )
     fig_calories.update_traces(marker_color=PASTEL_COLORS['pink'])
     avg_calories = daily_totals['Calories (kcal)'].mean()
-    fig_calories.add_hline(y=avg_calories, line_dash="dash", line_color="#FF97A9",
+    fig_calories.add_hline(y=avg_calories, line_dash="dash", line_color="#BA4F3C",
                           annotation_text=f"Average: {avg_calories:.0f} kcal", 
                           annotation_position="right")
     st.plotly_chart(fig_calories, use_container_width=True)
@@ -290,11 +301,12 @@ with tabs[1]:
     fig_protein = px.bar(
         daily_totals, 
         x='Date', 
-        y='Protein (g)',        title='🥩 Daily Protein Intake'
+        y='Protein (g)',
+        title='🥩 Daily Protein Intake'
     )
     fig_protein.update_traces(marker_color=PASTEL_COLORS['blue'])
     avg_protein = daily_totals['Protein (g)'].mean()
-    fig_protein.add_hline(y=avg_protein, line_dash="dash", line_color="#7EB1E8",
+    fig_protein.add_hline(y=avg_protein, line_dash="dash", line_color="#1D7268",
                          annotation_text=f"Average: {avg_protein:.1f}g", 
                          annotation_position="right")
     st.plotly_chart(fig_protein, use_container_width=True)
@@ -304,11 +316,12 @@ with tabs[2]:
     fig_carbs = px.bar(
         daily_totals, 
         x='Date', 
-        y='Carbohydrates (g)',        title='🍚 Daily Carbohydrate Intake'
+        y='Carbohydrates (g)',
+        title='🍚 Daily Carbohydrate Intake'
     )
     fig_carbs.update_traces(marker_color=PASTEL_COLORS['green'])
     avg_carbs = daily_totals['Carbohydrates (g)'].mean()
-    fig_carbs.add_hline(y=avg_carbs, line_dash="dash", line_color="#98D698",
+    fig_carbs.add_hline(y=avg_carbs, line_dash="dash", line_color="#68935F",
                        annotation_text=f"Average: {avg_carbs:.1f}g", 
                        annotation_position="right")
     st.plotly_chart(fig_carbs, use_container_width=True)
@@ -318,11 +331,12 @@ with tabs[3]:
     fig_sugar = px.bar(
         daily_totals, 
         x='Date', 
-        y='Sugar (g)',        title='🍯 Daily Sugar Intake'
+        y='Sugar (g)',
+        title='🍯 Daily Sugar Intake'
     )
     fig_sugar.update_traces(marker_color=PASTEL_COLORS['magenta'])
     avg_sugar = daily_totals['Sugar (g)'].mean()
-    fig_sugar.add_hline(y=avg_sugar, line_dash="dash", line_color="#FF8DC7",
+    fig_sugar.add_hline(y=avg_sugar, line_dash="dash", line_color="#C17A60",
                        annotation_text=f"Average: {avg_sugar:.1f}g", 
                        annotation_position="right")
     st.plotly_chart(fig_sugar, use_container_width=True)
@@ -332,11 +346,12 @@ with tabs[4]:
     fig_fat = px.bar(
         daily_totals, 
         x='Date', 
-        y='Fat (g)',        title='🥑 Daily Fat Intake'
+        y='Fat (g)',
+        title='🥑 Daily Fat Intake'
     )
     fig_fat.update_traces(marker_color=PASTEL_COLORS['peach'])
     avg_fat = daily_totals['Fat (g)'].mean()
-    fig_fat.add_hline(y=avg_fat, line_dash="dash", line_color="#FFB366",
+    fig_fat.add_hline(y=avg_fat, line_dash="dash", line_color="#D28745",
                      annotation_text=f"Average: {avg_fat:.1f}g", 
                      annotation_position="right")
     st.plotly_chart(fig_fat, use_container_width=True)
@@ -346,11 +361,12 @@ with tabs[5]:
     fig_sat_fat = px.bar(
         daily_totals, 
         x='Date', 
-        y='Saturated Fat (g)',        title='🧈 Daily Saturated Fat Intake'
+        y='Saturated Fat (g)',
+        title='🧈 Daily Saturated Fat Intake'
     )
     fig_sat_fat.update_traces(marker_color=PASTEL_COLORS['orange'])
     avg_sat_fat = daily_totals['Saturated Fat (g)'].mean()
-    fig_sat_fat.add_hline(y=avg_sat_fat, line_dash="dash", line_color="#FFC087",
+    fig_sat_fat.add_hline(y=avg_sat_fat, line_dash="dash", line_color="#C9966E",
                          annotation_text=f"Average: {avg_sat_fat:.1f}g", 
                          annotation_position="right")
     st.plotly_chart(fig_sat_fat, use_container_width=True)
@@ -360,11 +376,12 @@ with tabs[6]:
     fig_chol = px.bar(
         daily_totals, 
         x='Date', 
-        y='Cholesterol (mg)',        title='🥚 Daily Cholesterol Intake'
+        y='Cholesterol (mg)',
+        title='🥚 Daily Cholesterol Intake'
     )
     fig_chol.update_traces(marker_color=PASTEL_COLORS['purple'])
     avg_chol = daily_totals['Cholesterol (mg)'].mean()
-    fig_chol.add_hline(y=avg_chol, line_dash="dash", line_color="#BBA0FF",
+    fig_chol.add_hline(y=avg_chol, line_dash="dash", line_color="#1A2F37",
                        annotation_text=f"Average: {avg_chol:.0f}mg", 
                        annotation_position="right")
     st.plotly_chart(fig_chol, use_container_width=True)
@@ -374,11 +391,12 @@ with tabs[7]:
     fig_fiber = px.bar(
         daily_totals, 
         x='Date', 
-        y='Fiber (g)',        title='🥬 Daily Fiber Intake'
+        y='Fiber (g)',
+        title='🥬 Daily Fiber Intake'
     )
     fig_fiber.update_traces(marker_color=PASTEL_COLORS['yellow_green'])
     avg_fiber = daily_totals['Fiber (g)'].mean()
-    fig_fiber.add_hline(y=avg_fiber, line_dash="dash", line_color="#C5D86D",
+    fig_fiber.add_hline(y=avg_fiber, line_dash="dash", line_color="#C9A94B",
                        annotation_text=f"Average: {avg_fiber:.1f}g", 
                        annotation_position="right")
     st.plotly_chart(fig_fiber, use_container_width=True)
@@ -388,11 +406,12 @@ with tabs[8]:
     fig_omega = px.bar(
         daily_totals, 
         x='Date', 
-        y='Omega-3 (mg)',        title='🐟 Daily Omega-3 Intake'
+        y='Omega-3 (mg)',
+        title='🐟 Daily Omega-3 Intake'
     )
     fig_omega.update_traces(marker_color=PASTEL_COLORS['mint'])
     avg_omega = daily_totals['Omega-3 (mg)'].mean()
-    fig_omega.add_hline(y=avg_omega, line_dash="dash", line_color="#95D5B2",
+    fig_omega.add_hline(y=avg_omega, line_dash="dash", line_color="#4F8C92",
                        annotation_text=f"Average: {avg_omega:.0f}mg", 
                        annotation_position="right")
     st.plotly_chart(fig_omega, use_container_width=True)
@@ -402,17 +421,17 @@ st.header("🔍 Detailed Nutrient Analysis")
 nutrients = ['Calories (kcal)', 'Protein (g)', 'Carbohydrates (g)', 'Sugar (g)',
             'Fat (g)', 'Saturated Fat (g)', 'Cholesterol (mg)', 'Fiber (g)', 'Omega-3 (mg)']
 
-# Map nutrients to their corresponding soft pastel colors
+# Map nutrients to their corresponding colors from the new theme
 nutrient_colors = {
-    'Calories (kcal)': '#FFC3C3',      # Soft coral pink
-    'Protein (g)': '#C3E6FF',          # Baby blue
-    'Carbohydrates (g)': '#D4F0C6',    # Soft mint green
-    'Sugar (g)': '#FFD7E9',            # Light rose
-    'Fat (g)': '#FFE4CC',              # Soft peach
-    'Saturated Fat (g)': '#FFD4B8',    # Light apricot
-    'Cholesterol (mg)': '#E0D7FF',     # Soft lavender
-    'Fiber (g)': '#D8EDB8',            # Soft lime
-    'Omega-3 (mg)': '#B8E6D9'          # Soft aqua
+    'Calories (kcal)': '#E76F51',      # Coral
+    'Protein (g)': '#2A9D8F',          # Teal
+    'Carbohydrates (g)': '#8AB17D',    # Sage Green
+    'Sugar (g)': '#E29578',            # Light Coral
+    'Fat (g)': '#F4A261',              # Peach
+    'Saturated Fat (g)': '#EFBC9B',    # Light Peach
+    'Cholesterol (mg)': '#264653',     # Dark Teal
+    'Fiber (g)': '#E9C46A',            # Yellow/Gold
+    'Omega-3 (mg)': '#7EBDC3'          # Light Teal
 }
 
 selected_nutrient = st.selectbox("Select Nutrient", nutrients)
