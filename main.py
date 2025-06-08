@@ -14,7 +14,7 @@ TABLE_ID = st.secrets["AIRTABLE_TABLE_ID"]
 # Set page configuration
 st.set_page_config(
     page_title="Nutrition Dashboard",
-    page_icon="🥗",
+    page_icon="static/images/salad.png",
     layout="wide"
 )
 
@@ -59,21 +59,7 @@ def get_airtable_data():
         print(f"Error accessing Airtable: {str(e)}")
         return None
 
-# Function kept for reference - we now use create_nutrient_donut directly with the metrics
-def calculate_caloric_proportions(metrics_df):
-    # Calculate calories from each macronutrient
-    protein_cals = metrics_df['Protein (g)'] * 4  # 4 calories per gram of protein
-    carbs_cals = metrics_df['Carbohydrates (g)'] * 4  # 4 calories per gram of carbs
-    fat_cals = metrics_df['Fat (g)'] * 9  # 9 calories per gram of fat
-    
-    total_cals = metrics_df['Calories (kcal)']
-    
-    # Calculate percentages
-    return {
-        'Protein': protein_cals / total_cals * 100,
-        'Carbohydrates': carbs_cals / total_cals * 100,
-        'Fat': fat_cals / total_cals * 100
-    }
+# Define color palette using earthy tones
 
 # Define color palette using earthy tones
 PASTEL_COLORS = {
@@ -87,78 +73,6 @@ PASTEL_COLORS = {
     'yellow_green': '#E9C46A', # Fiber - Yellow/Gold
     'mint': '#7EBDC3'       # Omega-3 - Light Teal (added to complement theme)
 }
-
-def create_nutrient_donut(metrics, title):
-    # Define a consistent order for nutrients
-    nutrient_order = [
-        'Protein (g)',
-        'Carbohydrates (g)',
-        'Fat (g)',
-        'Sugar (g)',
-        'Saturated Fat (g)',
-        'Cholesterol (mg)',
-        'Fiber (g)',
-        'Omega-3 (mg)'
-    ]
-    
-    # Map of nutrients to their colors from our palette
-    nutrient_color_map = {
-        'Calories (kcal)': PASTEL_COLORS['pink'],
-        'Protein (g)': PASTEL_COLORS['blue'],
-        'Carbohydrates (g)': PASTEL_COLORS['green'],
-        'Fat (g)': PASTEL_COLORS['peach'],
-        'Sugar (g)': PASTEL_COLORS['magenta'],
-        'Saturated Fat (g)': PASTEL_COLORS['orange'],
-        'Cholesterol (mg)': PASTEL_COLORS['purple'],
-        'Fiber (g)': PASTEL_COLORS['yellow_green'],
-        'Omega-3 (mg)': PASTEL_COLORS['mint']
-    }
-    
-    # Initialize ordered lists for our chart data
-    labels = []
-    values = []
-    colors = []
-    
-    # Process nutrients in the defined order
-    for nutrient in nutrient_order:
-        if nutrient in metrics and not pd.isna(metrics[nutrient]) and metrics[nutrient] > 0:
-            labels.append(nutrient)
-            values.append(float(metrics[nutrient]))
-            colors.append(nutrient_color_map[nutrient])
-      # Add any remaining nutrients that weren't in our predefined order
-    for nutrient, value in metrics.items():
-        if (nutrient not in nutrient_order and 
-            nutrient != 'Calories (kcal)' and 
-            not pd.isna(value) and 
-            value > 0):
-            labels.append(nutrient)
-            values.append(float(value))
-            colors.append(nutrient_color_map.get(nutrient, '#CCCCCC'))  # Default gray if not in the map
-    
-    fig = go.Figure(data=[go.Pie(
-        labels=labels,
-        values=values,
-        hole=.4,
-        marker_colors=colors,
-        sort=False  # Disable automatic sorting to maintain our custom order
-    )])
-    
-    fig.update_layout(
-        title=title,
-        showlegend=True,
-        height=400,  # Increased height to accommodate more segments
-        margin=dict(t=40, b=0, l=0, r=0),
-        # Ensure consistent legend positioning
-        legend=dict(
-            orientation="v",
-            yanchor="middle",
-            y=0.5,
-            xanchor="right",
-            x=1.1
-        )
-    )
-    
-    return fig
 
 # Add refresh button in sidebar
 if st.sidebar.button("🔄 Refresh Data"):
@@ -211,7 +125,16 @@ mask = (df['Date'] >= date_range[0]) & (df['Date'] <= date_range[1])
 filtered_df = df[mask]
 
 # Daily Summary Metrics
-st.header("📊 Daily Nutritional Summary")
+import base64
+from pathlib import Path
+
+def img_to_base64(img_path):
+    with open(img_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode('utf-8')
+        
+# Create header with icon
+icon_base64 = img_to_base64("static/images/growth.png")
+st.markdown(f"<h1><img src='data:image/png;base64,{icon_base64}' width='30' style='margin-right: 10px; vertical-align: middle;'>Daily Nutritional Summary</h1>", unsafe_allow_html=True)
 
 # Calculate today's metrics
 today_metrics = filtered_df[filtered_df['Date'] == today_date].agg({
@@ -300,25 +223,11 @@ with col6:
 with col7:
     st.metric("Fiber", f"{daily_metrics['Fiber (g)']:.1f}g")
 
-# Nutrient Distribution
-st.subheader("Nutrient Distribution")
-col1, col2 = st.columns(2)
 
-with col1:
-    # Today's nutrients breakdown
-    if not today_metrics.isna().any():  # Only show if we have data for today
-        fig_today_donut = create_nutrient_donut(today_metrics, "Today's Nutrient Distribution")
-        st.plotly_chart(fig_today_donut, use_container_width=True)
-    else:
-        st.info("No data available for today")
-
-with col2:
-    # Average daily nutrients breakdown
-    fig_avg_donut = create_nutrient_donut(daily_metrics, "Average Daily Nutrient Distribution")
-    st.plotly_chart(fig_avg_donut, use_container_width=True)
 
 # Trends over time
-st.header("📊 Nutritional Trends")
+st.markdown(f"<h1><img src='data:image/png;base64,{icon_base64}' width='30' style='margin-right: 10px; vertical-align: middle;'>Nutritional Trends</h1>", unsafe_allow_html=True)
+
 tabs = st.tabs(["🔥 Calories", "🥩 Protein", "🍚 Carbohydrates", "🍯 Sugar", "🥑 Fat", "🧈 Saturated Fat", 
                 "🥚 Cholesterol", "🥬 Fiber", "🐟 Omega-3"])
 
@@ -471,7 +380,7 @@ with tabs[8]:
     st.plotly_chart(fig_omega, use_container_width=True)
 
 # Detailed nutrient analysis
-st.header("🔍 Detailed Nutrient Analysis")
+st.markdown("<h1>🔍 Detailed Nutrient Analysis</h1>", unsafe_allow_html=True)
 nutrients = ['Calories (kcal)', 'Protein (g)', 'Carbohydrates (g)', 'Sugar (g)',
             'Fat (g)', 'Saturated Fat (g)', 'Cholesterol (mg)', 'Fiber (g)', 'Omega-3 (mg)']
 
@@ -504,6 +413,6 @@ fig_nutrients.update_layout(yaxis={'categoryorder': 'total ascending'})
 st.plotly_chart(fig_nutrients, use_container_width=True)
 
 # Display raw data
-st.header("📋 Raw Data")
+st.markdown("<h1>📋 Raw Data</h1>", unsafe_allow_html=True)
 if st.checkbox("Show raw data"):
     st.dataframe(filtered_df)
